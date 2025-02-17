@@ -8,3 +8,5 @@ plotly
 pandas
 spacy
 python-dateutil
+spacy
+en_core_web_sm
