@@ -205,5 +205,20 @@ def main():
         st.subheader("Query Results")  
         st.info(query_response)  
 
+    # جدول المهام مع روابط YouTube
+    st.subheader("جدول المهام مع روابط YouTube")
+    
+    # إنشاء جدول باستخدام Pandas
+    tasks = [
+        {"المهمة": "مذاكرة التوزيع الكهربي", "الرابط": "https://www.youtube.com/playlist?list=PLxNbro6QtRYsFAcXhy9rXoE2y9mJ-iTu9"},
+        {"المهمة": "مذاكرة الريفت", "الرابط": "https://www.youtube.com/playlist?list=PLxNbro6QtRYv3fDvna8e6fJhOvtrnIlj8"},
+        {"المهمة": "مذاكرة شوب دراوينج", "الرابط": "https://www.youtube.com/playlist?list=PLxNbro6QtRYs0oEvaQJrHRzNCDrNS-oTK"},
+    ]
+    
+    df = pd.DataFrame(tasks)
+    
+    # عرض الجدول في Streamlit مع روابط قابلة للنقر
+    st.dataframe(df)
+
 if __name__ == "__main__":  
     main()  
