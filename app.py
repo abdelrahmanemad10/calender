@@ -14,7 +14,7 @@ st.title("📅 Smart Calendar with AI")
 st.write("Plan your tasks efficiently with AI-powered suggestions!")
 
 # Authenticate Google Gemini API
-genai.configure(api_key="AIzaSyAF1YILa2t_vYg_ECoBd6Iz4ZcnTQfbGk8")  # Replace with your Gemini API key
+genai.configure(api_key="AIzaSyDh5of7uhi5vnYkOlKHLMOcAw15YfGzgVo")  # Replace with your Gemini API key
 
 def suggest_event(user_input):
     """Use Gemini AI to suggest an event based on user input."""
