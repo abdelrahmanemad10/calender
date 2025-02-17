@@ -1,149 +1,154 @@
-import streamlit as st
-import google.generativeai as genai
-import google.auth
-from google.auth.transport.requests import Request
-from google.oauth2 import service_account
-import googleapiclient.discovery
-import plotly.express as px
-import pandas as pd
-import sqlite3
-from datetime import datetime, timedelta
-import spacy
-from dateutil.parser import parse
-import os
+import streamlit as st  
+import google.generativeai as genai  
+import google.auth  
+from google.auth.transport.requests import Request  
+from google.oauth2 import service_account  
+import googleapiclient.discovery  
+import plotly.express as px  
+import pandas as pd  
+import sqlite3  
+from datetime import datetime, timedelta  
+import spacy  
+from dateutil.parser import parse  
+import os  
+import logging  
 
-# Set up Streamlit
-st.title("📅 Smart Calendar with AI")
-st.write("Plan your tasks efficiently with AI-powered suggestions!")
+# Configure logging  
+logging.basicConfig(level=logging.INFO)  
+logger = logging.getLogger(__name__)  
 
-# Authenticate Google Gemini API
-API_KEY = os.getenv("AIzaSyDh5of7uhi5vnYkOlKHLMOcAw15YfGzgVo")  # Use environment variable for security
-if not API_KEY:
-    st.error("❌ Missing Gemini API key! Please set the GEMINI_API_KEY environment variable.")
-    st.stop()
+# Set up Streamlit page configuration  
+st.set_page_config(  
+    page_title="Smart Calendar AI",  
+    page_icon="📅",  
+    layout="wide"  
+)  
 
-genai.configure(api_key=API_KEY)
-
-def suggest_event(user_input):
-    """Use Gemini AI to suggest an event based on user input."""
-    model = genai.GenerativeModel("gemini-pro")  # Choose Gemini model
-    response = model.generate_content(f"Suggest an event for: {user_input}")
-    return response.candidates[0].content if response.candidates else "No suggestion available."
-
-# Authenticate and initialize Google Calendar API
-SCOPES = ['https://www.googleapis.com/auth/calendar']
-SERVICE_ACCOUNT_FILE = 'service-account.json'  # Update this path
-
-try:
-    credentials = service_account.Credentials.from_service_account_file(
-        SERVICE_ACCOUNT_FILE, scopes=SCOPES)
-    service = googleapiclient.discovery.build('calendar', 'v3', credentials=credentials)
-except Exception as e:
-    st.error(f"❌ Google Calendar API authentication failed: {e}")
-    st.stop()
-
-# Connect to SQLite database
-conn = sqlite3.connect('calendar.db', check_same_thread=False)
-c = conn.cursor()
-
-# Create table if it doesn't exist
-c.execute('''CREATE TABLE IF NOT EXISTS events
-             (id INTEGER PRIMARY KEY, task TEXT, start_date TEXT, end_date TEXT)''')
-conn.commit()
-
-# Load spaCy model
-try:
-    nlp = spacy.load("en_core_web_sm")
-except:
-    st.error("❌ spaCy model not found. Run `python -m spacy download en_core_web_sm` to install it.")
-    st.stop()
-
-def extract_task_details(user_input):
-    """Extract task details like date and time from user input."""
-    doc = nlp(user_input)
-    start_date, end_date = None, None
+# Secure API Key Handling  
+def get_api_key():  
+    """Retrieve API key securely"""  
+    # Prioritize environment variable  
+    api_key = os.getenv('AIzaSyDh5of7uhi5vnYkOlKHLMOcAw15YfGzgVo')  
     
-    for ent in doc.ents:
-        if ent.label_ == "DATE":
-            if not start_date:
-                start_date = parse(ent.text, fuzzy=True)
-            else:
-                end_date = parse(ent.text, fuzzy=True)
+    # Fallback to Streamlit secrets  
+    if not api_key:  
+        try:  
+            api_key = st.secrets['GEMINI_API_KEY']  
+        except Exception as e:  
+            st.error("❌ API Key not found. Please configure in environment or Streamlit secrets.")  
+            return None  
     
-    if not end_date:
-        end_date = start_date
-    
-    return user_input, start_date, end_date
+    return api_key  
 
-def generate_summary(events, period="day"):
-    """Generate a summary of tasks for the specified period."""
-    today = datetime.today()
-    summary = []
-    
-    if period == "day":
-        summary = [event for event in events if parse(event[2]).date() == today.date()]
-    elif period == "week":
-        start_of_week = today - timedelta(days=today.weekday())
-        end_of_week = start_of_week + timedelta(days=6)
-        summary = [event for event in events if start_of_week.date() <= parse(event[2]).date() <= end_of_week.date()]
-    
-    return summary
+# Robust SpaCy Model Loading  
+@st.cache_resource  
+def load_spacy_model():  
+    """Load spaCy model with error handling"""  
+    try:  
+        nlp = spacy.load("en_core_web_sm")  
+        return nlp  
+    except OSError:  
+        st.error("SpaCy model not found. Please install using 'python -m spacy download en_core_web_sm'")  
+        return None  
 
-# User input for tasks
-user_input = st.text_input("Enter your task:")
-if user_input:
-    task, start_date, end_date = extract_task_details(user_input)
-    if start_date:
-        st.write(f"**Task:** {task}")
-        st.write(f"**Start Date:** {start_date.strftime('%Y-%m-%d')}")
-        st.write(f"**End Date:** {end_date.strftime('%Y-%m-%d')}")
-        suggestion = suggest_event(user_input)
-        st.write(f"💡 **AI Suggestion:** {suggestion}")
-    else:
-        st.warning("⚠️ Could not extract a valid date. Please enter a specific date in your task description.")
-
-# Add event to database & Google Calendar
-if st.button('Add Event'):
-    if user_input and start_date and end_date:
-        c.execute("INSERT INTO events (task, start_date, end_date) VALUES (?, ?, ?)",
-                  (user_input, start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")))
-        conn.commit()
+# Enhanced Date Extraction  
+def extract_advanced_dates(user_input, nlp):  
+    """Advanced date extraction with multiple fallback methods"""  
+    try:  
+        # Try spaCy extraction  
+        if nlp:  
+            doc = nlp(user_input)  
+            date_entities = [ent for ent in doc.ents if ent.label_ == "DATE"]  
+            
+            if date_entities:  
+                try:  
+                    start_date = parse(date_entities[0].text, fuzzy=True)  
+                    end_date = parse(date_entities[-1].text, fuzzy=True) if len(date_entities) > 1 else start_date  
+                    return start_date, end_date  
+                except:  
+                    pass  
         
-        # Add event to Google Calendar
-        event = {
-            'summary': user_input,
-            'start': {'date': start_date.strftime("%Y-%m-%d")},
-            'end': {'date': end_date.strftime("%Y-%m-%d")},
-        }
-        service.events().insert(calendarId='primary', body=event).execute()
-        st.success(f"✅ Event '{user_input}' added successfully!")
+        # Fallback to dateutil parsing  
+        from dateutil.parser import parse  
+        
+        # Try parsing entire input  
+        try:  
+            parsed_date = parse(user_input, fuzzy=True)  
+            return parsed_date, parsed_date + timedelta(days=1)  
+        except:  
+            # Last resort: use today's date  
+            today = datetime.now()  
+            return today, today + timedelta(days=1)  
+    
+    except Exception as e:  
+        logger.error(f"Date extraction error: {e}")  
+        return None, None  
 
-# Display stored events
-st.subheader("📌 Your Events")
-c.execute("SELECT * FROM events")
-rows = c.fetchall()
-if rows:
-    for row in rows:
-        st.write(f"📅 **{row[1]}** | {row[2]} → {row[3]}")
-else:
-    st.write("No events added yet.")
+# Gemini AI Suggestion with Error Handling  
+def get_ai_suggestion(user_input, api_key):  
+    """Generate AI event suggestion with robust error handling"""  
+    try:  
+        genai.configure(api_key=api_key)  
+        model = genai.GenerativeModel("gemini-pro")  
+        
+        prompt = f"""  
+        You are a smart calendar assistant.   
+        Provide a concise, practical suggestion for the event described: {user_input}  
+        
+        Suggestion format:  
+        - Brief event description  
+        - Potential duration  
+        - Any preparation tips  
+        """  
+        
+        response = model.generate_content(prompt)  
+        return response.text.strip()  
+    
+    except Exception as e:  
+        logger.error(f"AI suggestion generation error: {e}")  
+        return "Unable to generate AI suggestion at this moment."  
 
-# Visualization
-df = pd.DataFrame(rows, columns=['ID', 'Task', 'Start', 'End'])
-if not df.empty:
-    fig = px.timeline(df, x_start="Start", x_end="End", y="Task", title="Your Schedule")
-    st.plotly_chart(fig)
+# Main Streamlit App  
+def main():  
+    st.title("📅 Smart Calendar with AI Assistance")  
+    
+    # Initialize key components  
+    api_key = get_api_key()  
+    nlp = load_spacy_model()  
+    
+    if not api_key or not nlp:  
+        st.error("Critical setup errors. Please check configuration.")  
+        return  
+    
+    # User Input Section  
+    with st.form("event_input"):  
+        user_input = st.text_input("Describe your event or task")  
+        submit_button = st.form_submit_button("Process Event")  
+    
+    if submit_button and user_input:  
+        # Extract dates  
+        start_date, end_date = extract_advanced_dates(user_input, nlp)  
+        
+        if start_date:  
+            # Generate AI Suggestion  
+            ai_suggestion = get_ai_suggestion(user_input, api_key)  
+            
+            # Display Results  
+            col1, col2 = st.columns(2)  
+            
+            with col1:  
+                st.subheader("Event Details")  
+                st.write(f"**Task:** {user_input}")  
+                st.write(f"**Start Date:** {start_date.strftime('%Y-%m-%d')}")  
+                st.write(f"**End Date:** {end_date.strftime('%Y-%m-%d')}")  
+            
+            with col2:  
+                st.subheader("AI Suggestion")  
+                st.info(ai_suggestion)  
+        else:  
+            st.warning("Could not extract a valid date from the input.")  
 
-# Generate summaries
-daily_summary = generate_summary(rows, period="day")
-st.write("**Daily Summary:**")
-for event in daily_summary:
-    st.write(f"✅ {event[1]} - {event[2]}")
+    # Additional features can be added here  
 
-weekly_summary = generate_summary(rows, period="week")
-st.write("**Weekly Summary:**")
-for event in weekly_summary:
-    st.write(f"📌 {event[1]} - {event[2]}")
-
-# Close database connection
-conn.close()
+if __name__ == "__main__":  
+    main()
