@@ -1,96 +1,74 @@
 import streamlit as st
-import pandas as pd
 import google.generativeai as genai
-import os
-import logging
+from datetime import datetime, timedelta
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Configure Gemini API
+genai.configure(api_key="YOUR_GEMINI_API_KEY")  # Replace with your Gemini API key
 
-# Set up Streamlit page configuration
-st.set_page_config(
-    page_title="Smart Calendar with Gemini AI",
-    page_icon="📅",
-    layout="wide"
-)
+# Initialize Gemini model
+model = genai.GenerativeModel('gemini-pro')
 
-# Retrieve API key securely
-def get_api_key():
-    """Retrieve API key securely"""
-    api_key = os.getenv('GEMINI_API_KEY')
-    if not api_key:
-        try:
-            api_key = st.secrets['GEMINI_API_KEY']
-        except Exception as e:
-            st.error("❌ API Key not found. Please configure in environment or Streamlit secrets.")
-            return None
-    return api_key
+# Streamlit App Title
+st.title("📚 Personalized 45-Day Study Scheduler")
+st.write("Generate a customized study schedule with daily goals, reviews, and AI suggestions!")
 
-# Enhanced Gemini AI Suggestion with Additional Features
-def get_ai_suggestion(user_input, api_key):
-    """Generate enhanced AI event suggestion with additional features"""
-    try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-pro")
-        
+# User Inputs
+st.sidebar.header("Input Your Study Preferences")
+course_names = st.sidebar.text_input("Enter Course Names (comma-separated):", "Electrical Distribution, Revit, Shop Drawing")
+start_date = st.sidebar.date_input("Select Start Date:", datetime.today())
+study_hours_per_day = st.sidebar.number_input("Study Hours Per Day:", min_value=1, max_value=8, value=2)
+
+# Parse course names
+courses = [course.strip() for course in course_names.split(",")]
+
+# Generate Schedule Button
+if st.sidebar.button("Generate Schedule"):
+    st.sidebar.success("Generating your 45-day study schedule...")
+
+    # Initialize schedule
+    schedule = []
+    current_date = start_date
+
+    # Loop through 45 days
+    for day in range(1, 46):
+        # Select a course for the day (rotate through courses)
+        course = courses[(day - 1) % len(courses)]
+
+        # Generate daily goal and review using Gemini
         prompt = f"""
-        You are a study mentor. Explain the following topic in detail and provide insights for better understanding:
-        {user_input}
+        Create a study plan for Day {day} for the course: {course}.
+        - Include a clear goal for the day.
+        - Add a review task to reinforce learning.
+        - Provide a suggestion for better understanding (e.g., practical applications, tips).
         """
-        
         response = model.generate_content(prompt)
-        return response.text.strip()
-    
-    except Exception as e:
-        logger.error(f"AI suggestion generation error: {e}")
-        return "Unable to generate AI suggestion at this moment."
+        daily_plan = response.text
 
-# Study Plan Data
-study_plan = [
-    {"Topic": "Electrical Distribution Course - Lecture 1", "Duration": "2 hours", "Video Link": "https://www.youtube.com/watch?v=T0CqOBY9TiQ&list=PLxNbro6QtRYsFAcXhy9rXoE2y9mJ-iTu9"},
-    {"Topic": "Electrical Distribution Course - Lecture 2", "Duration": "2 hours", "Video Link": "https://www.youtube.com/watch?v=T0CqOBY9TiQ&list=PLxNbro6QtRYsFAcXhy9rXoE2y9mJ-iTu9"},
-    {"Topic": "Revit Course - Lecture 1", "Duration": "2.5 hours", "Video Link": "https://www.youtube.com/watch?v=h_w-Z_vFa4M&list=PLxNbro6QtRYv3fDvna8e6fJhOvtrnIlj8"},
-    {"Topic": "Revit Course - Lecture 2", "Duration": "2.5 hours", "Video Link": "https://www.youtube.com/watch?v=h_w-Z_vFa4M&list=PLxNbro6QtRYv3fDvna8e6fJhOvtrnIlj8"},
-    {"Topic": "Shop Drawing Course - Lecture 1", "Duration": "2.5 hours", "Video Link": "https://www.youtube.com/watch?v=h_w-Z_vFa4M&list=PLxNbro6QtRYv3fDvna8e6fJhOvtrnIlj8"},
-    {"Topic": "Shop Drawing Course - Lecture 2", "Duration": "2.5 hours", "Video Link": "https://www.youtube.com/watch?v=h_w-Z_vFa4M&list=PLxNbro6QtRYv3fDvna8e6fJhOvtrnIlj8"}
-]
+        # Add to schedule
+        schedule.append({
+            "Day": day,
+            "Date": current_date.strftime("%Y-%m-%d"),
+            "Course": course,
+            "Plan": daily_plan
+        })
 
-# Display Table with Video Links and Course Topics
-def display_study_plan():
-    df = pd.DataFrame(study_plan)
-    
-    # Display table with clickable video links
-    st.subheader("Study Plan with Video Links")
-    st.dataframe(df)
+        # Increment date
+        current_date += timedelta(days=1)
 
-# Process tasks with Gemini AI suggestions
-def assign_ai_suggestions():
-    api_key = get_api_key()
-    if not api_key:
-        st.error("API Key is missing. Please configure it to proceed.")
-        return
+    # Display Schedule
+    st.header("Your 45-Day Study Schedule")
+    for entry in schedule:
+        st.subheader(f"Day {entry['Day']} ({entry['Date']}) - {entry['Course']}")
+        st.write(entry["Plan"])
+        st.markdown("---")
 
-    # Assigning AI suggestions for each task
-    for idx, task in enumerate(study_plan):
-        study_plan[idx]["AI_Tips"] = get_ai_suggestion(f"Explain the topic of {task['Topic']}", api_key)
-
-# Main Streamlit App
-def main():
-    st.title("📅 Smart Study Plan with AI Assistance")
-    
-    # Display the study plan with course details
-    display_study_plan()
-
-    # Button to get AI suggestions for each task
-    if st.button("Get AI Study Tips"):
-        assign_ai_suggestions()
-
-        # Display AI Tips for each task
-        st.subheader("AI Tips for Each Topic")
-        for task in study_plan:
-            st.write(f"**{task['Topic']}**:")
-            st.info(task["AI_Tips"])
-
-if __name__ == "__main__":
-    main()
+    # Download Schedule as CSV
+    import pandas as pd
+    df = pd.DataFrame(schedule)
+    csv = df.to_csv(index=False)
+    st.download_button(
+        label="Download Schedule as CSV",
+        data=csv,
+        file_name="45_day_study_schedule.csv",
+        mime="text/csv"
+    )
