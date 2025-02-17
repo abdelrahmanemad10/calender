@@ -28,7 +28,7 @@ st.set_page_config(
 def get_api_key():  
     """Retrieve API key securely"""  
     # Prioritize environment variable  
-     api_key = os.getenv('GEMINI_API_KEY')   
+    api_key = os.getenv('GEMINI_API_KEY')  
     
     # Fallback to Streamlit secrets  
     if not api_key:  
