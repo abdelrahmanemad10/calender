@@ -12,6 +12,8 @@ import spacy
 from dateutil.parser import parse  
 import os  
 import logging  
+from arabic_reshaper import arabic_reshaper  
+from bidi.algorithm import get_display  
 
 # Configure logging  
 logging.basicConfig(level=logging.INFO)  
@@ -51,7 +53,7 @@ def load_spacy_model():
         st.error("SpaCy model not found. Please install using 'python -m spacy download en_core_web_sm'")  
         return None  
 
-# Enhanced Date Extraction  
+# Enhanced Date Extraction with Arabic support  
 def extract_advanced_dates(user_input, nlp):  
     """Advanced date extraction with multiple fallback methods"""  
     try:  
@@ -204,4 +206,4 @@ def main():
         st.info(query_response)  
 
 if __name__ == "__main__":  
-    main()
+    main()  
