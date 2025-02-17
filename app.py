@@ -7,7 +7,9 @@ import googleapiclient.discovery
 import plotly.express as px
 import pandas as pd
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
+import spacy
+from dateutil.parser import parse
 
 # Set up Streamlit
 st.title("📅 Smart Calendar with AI")
@@ -24,7 +26,7 @@ def suggest_event(user_input):
 
 # Authenticate and initialize Google Calendar API
 SCOPES = ['https://www.googleapis.com/auth/calendar']
-SERVICE_ACCOUNT_FILE = 'service-account.json'
+SERVICE_ACCOUNT_FILE = 'service-account.json'  # Update this path
 
 credentials = service_account.Credentials.from_service_account_file(
     SERVICE_ACCOUNT_FILE, scopes=SCOPES)
@@ -40,12 +42,71 @@ c.execute('''CREATE TABLE IF NOT EXISTS events
              (id INTEGER PRIMARY KEY, task TEXT, start_date TEXT, end_date TEXT)''')
 conn.commit()
 
+# Load spaCy model
+nlp = spacy.load("en_core_web_sm")
+
+def extract_task_details(user_input):
+    """Extract task details like date and time from user input."""
+    doc = nlp(user_input)
+    task = user_input
+    start_date = None
+    end_date = None
+    
+    for ent in doc.ents:
+        if ent.label_ == "DATE":
+            if not start_date:
+                start_date = parse(ent.text, fuzzy=True)
+            else:
+                end_date = parse(ent.text, fuzzy=True)
+    
+    if not end_date:
+        end_date = start_date
+    
+    return task, start_date, end_date
+
+def prioritize_tasks(tasks):
+    """Prioritize tasks based on their importance and deadlines."""
+    # Simple rule-based prioritization
+    tasks.sort(key=lambda x: (x['end_date'], x['importance']), reverse=True)
+    return tasks
+
+def detect_conflicts(events, new_event):
+    """Detect conflicts between existing events and a new event."""
+    for event in events:
+        if (new_event['start_date'] <= event['end_date'] and new_event['end_date'] >= event['start_date']):
+            return True
+    return False
+
+def suggest_alternative_time(events, new_event):
+    """Suggest alternative time slots for a new event."""
+    alternative_start = new_event['start_date']
+    alternative_end = new_event['end_date']
+    
+    while detect_conflicts(events, {"start_date": alternative_start, "end_date": alternative_end}):
+        alternative_start += timedelta(days=1)
+        alternative_end += timedelta(days=1)
+    
+    return alternative_start, alternative_end
+
+def generate_summary(events, period="day"):
+    """Generate a summary of tasks for the specified period."""
+    today = datetime.today()
+    if period == "day":
+        summary = [event for event in events if event['start_date'].date() == today.date()]
+    elif period == "week":
+        start_of_week = today - timedelta(days=today.weekday())
+        end_of_week = start_of_week + timedelta(days=6)
+        summary = [event for event in events if start_of_week <= event['start_date'] <= end_of_week]
+    return summary
+
 # User input for tasks
 user_input = st.text_input("Enter your task:")
-start_date = st.date_input("Start Date")
-end_date = st.date_input("End Date")
-
 if user_input:
+    task, start_date, end_date = extract_task_details(user_input)
+    st.write(f"Task: {task}")
+    st.write(f"Start Date: {start_date}")
+    st.write(f"End Date: {end_date}")
+    
     suggestion = suggest_event(user_input)
     st.write(f"💡 AI Suggestion: {suggestion}")
 
@@ -82,3 +143,14 @@ df = pd.DataFrame(rows, columns=['ID', 'Task', 'Start', 'End'])
 if not df.empty:
     fig = px.timeline(df, x_start="Start", x_end="End", y="Task", title="Your Schedule")
     st.plotly_chart(fig)
+
+# Generate daily and weekly summaries
+daily_summary = generate_summary(rows, period="day")
+st.write("Daily Summary:")
+for event in daily_summary:
+    st.write(event)
+
+weekly_summary = generate_summary(rows, period="week")
+st.write("Weekly Summary:")
+for event in weekly_summary:
+    st.write(event)
