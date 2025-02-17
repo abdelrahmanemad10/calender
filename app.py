@@ -1,101 +1,113 @@
-import streamlit as st
-import google.generativeai as genai
+import streamlit as st  
+import google.generativeai as genai  
+import os  
+import logging  
+import pandas as pd  
 from datetime import datetime, timedelta
-import pandas as pd
-import os
 
-# Set up Streamlit page configuration
-st.set_page_config(page_title="Smart Study Calendar", page_icon="📅", layout="wide")
+# Configure logging  
+logging.basicConfig(level=logging.INFO)  
+logger = logging.getLogger(__name__)  
 
-# Fetch API Key from Streamlit Secrets or environment
-def get_api_key():
-    api_key = os.getenv('GEMINI_API_KEY')
-    if not api_key:
-        try:
-            api_key = st.secrets['GEMINI_API_KEY']
-        except Exception as e:
-            st.error("❌ API Key not found.")
-            return None
-    return api_key
+# Set up Streamlit page configuration  
+st.set_page_config(  
+    page_title="Smart Calendar AI",  
+    page_icon="📅",  
+    layout="wide"  
+)  
 
-# Function to generate AI suggestion using Gemini API
-def get_ai_suggestion(user_input, api_key):
-    try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel("gemini-pro")
-        prompt = f"""
-        You are a study assistant. For the topic described below, provide a concise explanation and tips for better understanding:
-        {user_input}
-        
-        Response format:
-        - Brief explanation
-        - Key points
-        - Study tips
-        """
-        response = model.generate_content(prompt)
-        return response.text.strip()
-    except Exception as e:
-        st.error(f"AI error: {e}")
-        return "Could not retrieve AI suggestion."
-
-# Define course details
-courses = {
-    "Electrical Distribution": {"lectures": 19, "time_per_lecture": 2.25},  # Average 2.25 hours
-    "Revit": {"lectures": 8, "time_per_lecture": 2.25},
-    "Shop Drawing": {"lectures": 6, "time_per_lecture": 2.25},
-}
-
-# Calculate total time for each course
-total_time = {course: details["lectures"] * details["time_per_lecture"] for course, details in courses.items()}
-
-# Total time required
-total_study_time = sum(total_time.values())
-
-# Days available for study (45 days, excluding Fridays)
-study_days = 45 - 9  # Exclude Fridays (9 days)
-time_per_day = total_study_time / study_days
-
-# Create study schedule
-study_schedule = []
-current_date = datetime.today()
-
-for i in range(study_days):
-    day_schedule = {}
-    day_schedule["Date"] = current_date.strftime("%Y-%m-%d")
-    day_schedule["Topic"] = None  # Will be filled dynamically
-    day_schedule["AI_Tips"] = None  # Will be filled dynamically
-    study_schedule.append(day_schedule)
-    current_date += timedelta(days=1)
-
-# Display the calendar table
-st.title("📅 Smart Study Calendar")
-st.subheader("Your Study Plan for the Next 45 Days")
-st.write(f"Total study time: {total_study_time:.2f} hours. Study time per day: {time_per_day:.2f} hours.")
-
-# Table to display the daily tasks
-study_df = pd.DataFrame(study_schedule)
-
-# Function to distribute topics and study time across days
-def assign_tasks():
-    topic_order = ["Electrical Distribution", "Revit", "Shop Drawing"]
-    remaining_time = time_per_day
+# Secure API Key Handling  
+def get_api_key():  
+    """Retrieve API key securely"""  
+    # Prioritize environment variable  
+    api_key = os.getenv('GEMINI_API_KEY')  
     
-    for idx, row in study_df.iterrows():
-        topic = topic_order[idx % len(topic_order)]
-        study_df.at[idx, "Topic"] = topic
-        study_df.at[idx, "AI_Tips"] = get_ai_suggestion(f"Explain the topic of {topic}", api_key)
-        remaining_time -= courses[topic]["time_per_lecture"]
-        if remaining_time <= 0:
-            remaining_time = time_per_day  # Reset for next day
+    # Fallback to Streamlit secrets  
+    if not api_key:  
+        try:  
+            api_key = st.secrets['GEMINI_API_KEY']  
+        except Exception as e:  
+            st.error("❌ API Key not found. Please configure in environment or Streamlit secrets.")  
+            return None  
+    
+    return api_key  
 
-assign_tasks()
+# Function to generate AI suggestion using Gemini API  
+def get_ai_suggestion(user_input, api_key):  
+    if not api_key:  
+        st.error("API key is missing.")  
+        return "API key is missing."
+    
+    try:  
+        genai.configure(api_key=api_key)  
+        model = genai.GenerativeModel("gemini-pro")  
+        
+        prompt = f"""  
+        You are a study assistant. For the topic described below, provide a concise explanation and tips for better understanding:  
+        {user_input}  
+        
+        Response format:  
+        - Brief explanation  
+        - Key points  
+        - Study tips  
+        """  
+        
+        response = model.generate_content(prompt)  
+        return response.text.strip()  
+    except Exception as e:  
+        st.error(f"AI error: {e}")  
+        return "Could not retrieve AI suggestion."  
 
-# Show the schedule with AI tips
-st.dataframe(study_df)
+# Function to assign tasks for 45 days  
+def assign_tasks():  
+    api_key = get_api_key()  
+    if api_key is None:  
+        st.error("⚠️ API Key not found. Please provide a valid API Key.")  
+        return  
 
-# Extra features: Allow users to input any question about their calendar
-user_query = st.text_input("Ask your smart assistant about today's study task or any question:")
-if user_query:
-    ai_response = get_ai_suggestion(user_query, get_api_key())
-    st.info(f"AI Response: {ai_response}")
+    # Define tasks and their estimated durations  
+    tasks = {  
+        "التوزيع الكهربائي": {"lectures": 19, "duration": 2.5},  
+        "ريفيت": {"lectures": 8, "duration": 2.5},  
+        "شوب دراوينج": {"lectures": 6, "duration": 2.5},  
+    }  
+    
+    total_days = 45  
+    study_plan = []  
+    
+    for task, details in tasks.items():  
+        lectures = details["lectures"]  
+        duration = details["duration"]  
+        for i in range(lectures):  
+            # Assign study day for each lecture  
+            study_plan.append({"day": len(study_plan) + 1, "task": task, "lecture": i + 1, "duration": duration})  
+    
+    # Create a DataFrame  
+    study_df = pd.DataFrame(study_plan)  
+    
+    # Add AI tips for each task  
+    for idx, row in study_df.iterrows():  
+        task = row["task"]  
+        ai_tips = get_ai_suggestion(f"Explain the topic of {task}", api_key)  
+        study_df.at[idx, "AI_Tips"] = ai_tips  
+    
+    # Display the study plan with AI suggestions  
+    st.subheader("Study Plan for 45 Days")  
+    st.dataframe(study_df)  
 
+# Main Streamlit App with Enhanced Features  
+def main():  
+    st.title("📅 Smart Calendar with AI Assistance")  
+    
+    # Initialize key components  
+    api_key = get_api_key()  
+    
+    if not api_key:  
+        st.error("Critical setup errors. Please check configuration.")  
+        return  
+    
+    # Assign tasks  
+    assign_tasks()
+
+if __name__ == "__main__":  
+    main()  
