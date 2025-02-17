@@ -84,22 +84,28 @@ def extract_advanced_dates(user_input, nlp):
         logger.error(f"Date extraction error: {e}")  
         return None, None  
 
-# Gemini AI Suggestion with Error Handling  
-def get_ai_suggestion(user_input, api_key):  
-    """Generate AI event suggestion with robust error handling"""  
+# Enhanced Gemini AI Suggestion with Additional Features  
+def get_ai_suggestion_enhanced(user_input, api_key, existing_events=None):  
+    """Generate enhanced AI event suggestion with additional features"""  
     try:  
         genai.configure(api_key=api_key)  
         model = genai.GenerativeModel("gemini-pro")  
         
         prompt = f"""  
         You are a smart calendar assistant.   
-        Provide a concise, practical suggestion for the event described: {user_input}  
+        Provide a comprehensive suggestion for the event described: {user_input}  
         
         Suggestion format:  
         - Brief event description  
         - Potential duration  
-        - Any preparation tips  
+        - Event category (e.g., Meeting, Personal, Work, etc.)  
+        - Optimal reminder times  
+        - Preparation tips  
+        - Suggested time slots if conflicts exist  
         """  
+        
+        if existing_events:  
+            prompt += f"\n\nExisting Events:\n{existing_events}"  
         
         response = model.generate_content(prompt)  
         return response.text.strip()  
@@ -108,7 +114,40 @@ def get_ai_suggestion(user_input, api_key):
         logger.error(f"AI suggestion generation error: {e}")  
         return "Unable to generate AI suggestion at this moment."  
 
-# Main Streamlit App  
+# Function to fetch existing events from the calendar  
+def fetch_existing_events(start_date, end_date):  
+    """Fetch existing events from the calendar within the specified date range"""  
+    # Placeholder function - implement actual calendar API integration here  
+    return [  
+        {"title": "Team Meeting", "start": "2023-10-10T10:00:00", "end": "2023-10-10T11:00:00"},  
+        {"title": "Lunch with John", "start": "2023-10-10T12:00:00", "end": "2023-10-10T13:00:00"},  
+    ]  
+
+# Natural Language Query Processing  
+def process_natural_language_query(query, api_key):  
+    """Process natural language queries using Gemini AI"""  
+    try:  
+        genai.configure(api_key=api_key)  
+        model = genai.GenerativeModel("gemini-pro")  
+        
+        prompt = f"""  
+        You are a smart calendar assistant.   
+        Process the following user query and provide a detailed response: {query}  
+        
+        Response format:  
+        - Query interpretation  
+        - Relevant calendar events  
+        - Suggested actions  
+        """  
+        
+        response = model.generate_content(prompt)  
+        return response.text.strip()  
+    
+    except Exception as e:  
+        logger.error(f"Natural language query processing error: {e}")  
+        return "Unable to process the query at this moment."  
+
+# Main Streamlit App with Enhanced Features  
 def main():  
     st.title("📅 Smart Calendar with AI Assistance")  
     
@@ -130,8 +169,11 @@ def main():
         start_date, end_date = extract_advanced_dates(user_input, nlp)  
         
         if start_date:  
-            # Generate AI Suggestion  
-            ai_suggestion = get_ai_suggestion(user_input, api_key)  
+            # Fetch existing events  
+            existing_events = fetch_existing_events(start_date, end_date)  
+            
+            # Generate Enhanced AI Suggestion  
+            ai_suggestion = get_ai_suggestion_enhanced(user_input, api_key, existing_events)  
             
             # Display Results  
             col1, col2 = st.columns(2)  
@@ -147,8 +189,19 @@ def main():
                 st.info(ai_suggestion)  
         else:  
             st.warning("Could not extract a valid date from the input.")  
-
-    # Additional features can be added here  
+    
+    # Natural Language Query Section  
+    with st.form("nl_query"):  
+        nl_query = st.text_input("Ask a question about your calendar")  
+        query_button = st.form_submit_button("Submit Query")  
+    
+    if query_button and nl_query:  
+        # Process Natural Language Query  
+        query_response = process_natural_language_query(nl_query, api_key)  
+        
+        # Display Query Results  
+        st.subheader("Query Results")  
+        st.info(query_response)  
 
 if __name__ == "__main__":  
     main()
