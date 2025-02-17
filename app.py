@@ -3,7 +3,7 @@ import google.generativeai as genai
 from datetime import datetime, timedelta
 
 # Configure Gemini API
-genai.configure(api_key="YOUR_GEMINI_API_KEY")  # Replace with your Gemini API key
+genai.configure(api_key="GEMINI_API_KEY")  # Replace with your Gemini API key
 
 # Initialize Gemini model
 model = genai.GenerativeModel('gemini-pro')
