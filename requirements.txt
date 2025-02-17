@@ -9,5 +9,5 @@ google-api-python-client
 plotly  
 pandas  
 python-dateutil
-arabic_reshaper
-bidi.algorithm
+arabic-reshaper
+python-bidi
