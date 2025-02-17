@@ -10,3 +10,4 @@ plotly
 pandas  
 python-dateutil
 arabic_reshaper
+bidi.algorithm
