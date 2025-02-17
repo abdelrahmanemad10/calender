@@ -24,7 +24,7 @@ def suggest_event(user_input):
 
 # Authenticate and initialize Google Calendar API
 SCOPES = ['https://www.googleapis.com/auth/calendar']
-SERVICE_ACCOUNT_FILE = 'path/to/service-account-file.json'
+SERVICE_ACCOUNT_FILE = '/service-account-file.json'
 
 credentials = service_account.Credentials.from_service_account_file(
     SERVICE_ACCOUNT_FILE, scopes=SCOPES)
